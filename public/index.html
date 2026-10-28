@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amigo Secreto</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎁</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <p class="eyebrow" id="eyebrow">Amigo secreto</p>
+    <h1 id="h1">Área do organizador</h1>
+    <div class="chips"><span class="chip">🎁 Sorteio por e-mail</span><span class="chip">🤫 Mensagens anônimas</span></div>
+  </div>
+</header>
+
+<main>
+  <form id="gate" class="card">
+    <h2>Entrar como organizador</h2>
+    <p class="sub">Só quem organiza o sorteio tem esta senha.</p>
+    <div class="field"><label for="gatePass">Senha de organizador</label><input id="gatePass" type="password" required autocomplete="current-password"></div>
+    <button class="primary block" id="enter" type="submit">Entrar</button>
+    <p class="hint">Vai participar? Você não precisa entrar aqui: abra o botão <b>"Abrir minha página"</b> do e-mail que recebeu.</p>
+  </form>
+
+  <form id="form" class="card" autocomplete="off" hidden>
+    <h2>O grupo</h2>
+    <p class="sub">Essas informações vão no e-mail de cada participante.</p>
+    <div class="field"><label for="name">Nome do grupo</label><input id="name" placeholder="Ex.: Família Rodrigues 2026" required maxlength="80"></div>
+    <div class="row">
+      <div class="field"><label for="date">Dia da nossa troca de presentes</label><input id="date" type="date"></div>
+      <div class="field"><label for="budget">Valor do presente</label><input id="budget" placeholder="Ex.: até R$ 100" maxlength="40"></div>
+    </div>
+    <div class="field"><label for="notes">Recado (opcional)</label><textarea id="notes" rows="2" maxlength="300" placeholder="Ex.: Troca na casa da vó, depois do almoço"></textarea></div>
+
+    <h2 style="margin-top:24px">Participantes</h2>
+    <p class="sub">Nome e e-mail de cada um — inclusive o seu, se for participar.</p>
+    <div id="people" class="people"></div>
+    <button type="button" class="ghost" id="add">+ Adicionar pessoa</button>
+
+    <h2 style="margin-top:24px">Organizador</h2>
+    <p class="sub">Seu e-mail recebe o link do painel (para não perder).</p>
+    <div class="field"><label for="orgEmail">Seu e-mail</label><input id="orgEmail" type="email" placeholder="voce@gmail.com"></div>
+
+    <button class="primary block" id="create" type="submit">Criar grupo</button>
+  </form>
+</main>
+<footer>O sorteio é secreto até para quem organiza.</footer>
+
+<script src="app.js"></script>
+<script>
+const people = document.getElementById('people');
+let PASS = '';
+
+function unlock() {
+  document.getElementById('gate').hidden = true;
+  document.getElementById('form').hidden = false;
+  document.getElementById('eyebrow').textContent = 'Organizador';
+  document.getElementById('h1').textContent = 'Novo amigo secreto';
+}
+try { PASS = sessionStorage.getItem('orgPass') || ''; } catch {}
+if (PASS) unlock();
+
+document.getElementById('gate').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const pass = document.getElementById('gatePass').value;
+  busy(document.getElementById('enter'), async () => {
+    await api('/api/group', { action: 'login', password: pass });
+    PASS = pass;
+    try { sessionStorage.setItem('orgPass', pass); } catch {}
+    unlock();
+  }, 'Entrando…');
+});
+
+function addRow(name = '', email = '') {
+  const row = h('div', { class: 'person-row' },
+    h('input', { placeholder: 'Nome', value: name, maxlength: 60, 'aria-label': 'Nome' }),
+    h('input', { type: 'email', placeholder: 'e-mail', value: email, maxlength: 120, 'aria-label': 'E-mail' }),
+    h('button', { type: 'button', class: 'x', title: 'Remover', 'aria-label': 'Remover', onclick: () => row.remove() }, '×'),
+  );
+  people.append(row);
+  return row;
+}
+for (let i = 0; i < 4; i++) addRow();
+document.getElementById('add').onclick = () => addRow().querySelector('input').focus();
+
+document.getElementById('form').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const btn = document.getElementById('create');
+  const participants = [...people.children].map((r) => {
+    const [n, e] = r.querySelectorAll('input');
+    return { name: n.value, email: e.value };
+  });
+  busy(btn, async () => {
+    const res = await api('/api/group', {
+      action: 'create',
+      password: PASS,
+      organizerEmail: document.getElementById('orgEmail').value,
+      name: document.getElementById('name').value,
+      date: document.getElementById('date').value,
+      budget: document.getElementById('budget').value,
+      notes: document.getElementById('notes').value,
+      participants,
+    });
+    location.href = res.adminUrl.replace(/^https?:\/\/[^/]+/, '') + '&novo=1';
+  }, 'Criando…');
+});
+</script>
+</body>
+</html>

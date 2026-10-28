@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Meu Amigo Secreto</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎁</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <p class="eyebrow" id="group">Amigo secreto</p>
+    <h1 id="hello">Carregando…</h1>
+    <div class="chips" id="chips"></div>
+  </div>
+</header>
+
+<main id="main"><div class="card loading">Carregando…</div></main>
+<footer>Seu link é pessoal — não compartilhe.</footer>
+
+<script src="app.js"></script>
+<script>
+const G = qs.get('g'), T = qs.get('t');
+const main = document.getElementById('main');
+let data, tab = 'tirei', revealed = false, wishDraft = null;
+
+const call = (action, extra = {}) => api('/api/me', { action, g: G, t: T, ...extra });
+
+// Contagem de mensagens já vistas (para a bolinha de "nova mensagem").
+const seenKey = (k) => `seen:${G}:${T}:${k}`;
+function getSeen(k) { try { return +localStorage.getItem(seenKey(k)) || 0; } catch { return 0; } }
+function setSeen(k, n) { try { localStorage.setItem(seenKey(k), n); } catch {} }
+const unread = () => data.fromSanta.filter((m) => !m.mine).length > getSeen('santa') ||
+                     data.toGiftee.filter((m) => !m.mine).length > getSeen('giftee');
+
+function render() {
+  const g = data.group;
+  document.getElementById('group').textContent = g.name;
+  document.getElementById('hello').textContent = 'Oi, ' + data.me.name + '!';
+  document.title = g.name + ' · Amigo Secreto';
+  headerChips(g);
+  main.replaceChildren();
+
+  if (!g.drawn) tab = 'lista';
+
+  const tabs = h('nav', { class: 'tabs', role: 'tablist' });
+  const addTab = (id, label, dot) => tabs.append(h('button', {
+    role: 'tab', 'aria-selected': String(tab === id),
+    onclick: () => { tab = id; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); },
+  }, label, dot ? h('span', { class: 'dot' }) : null));
+  if (g.drawn) addTab('tirei', '🎁 Quem eu tirei');
+  addTab('lista', '📝 Minha lista');
+  if (g.drawn) addTab('msgs', '💬 Mensagens', tab !== 'msgs' && unread());
+  main.append(tabs);
+
+  if (g.notes && tab !== 'msgs') main.append(h('div', { class: 'callout notes' }, '📝 ' + g.notes));
+
+  if (tab === 'tirei') renderGiftee();
+  if (tab === 'lista') renderMyList();
+  if (tab === 'msgs') renderMessages();
+}
+
+function wishList(wishes) {
+  const filled = wishes.filter((w) => w.text);
+  if (!filled.length) return h('p', { class: 'empty' }, 'Ainda não colocou nenhuma sugestão. Que tal perguntar na aba Mensagens? 😉');
+  return h('ul', { class: 'wishes' }, filled.map((w) => h('li', {},
+    h('div', {}, h('div', {}, w.text),
+      w.link ? h('a', { href: w.link, target: '_blank', rel: 'noopener noreferrer' }, 'Ver o presente ↗') : null))));
+}
+
+function renderGiftee() {
+  const gf = data.giftee;
+  const nameEl = h('p', { class: 'name' + (revealed ? '' : ' hidden') }, gf.name);
+  main.append(h('section', { class: 'card' },
+    h('div', { class: 'reveal' },
+      h('p', {}, 'Você tirou'),
+      nameEl,
+      revealed ? null : h('button', { class: 'primary', style: 'margin-top:16px', onclick: () => { revealed = true; render(); } }, 'Toque para revelar'))));
+
+  main.append(h('section', { class: 'card' },
+    h('h2', {}, 'Lista de desejos de ' + gf.name),
+    h('p', { class: 'sub' }, 'Sugestões que ' + gf.name + ' deixou.'),
+    wishList(gf.wishes),
+    h('div', { class: 'actions' },
+      h('button', { class: 'secondary', onclick: () => { tab = 'msgs'; render(); } }, '🤫 Perguntar algo anonimamente'))));
+}
+
+function renderMyList() {
+  if (!data.group.drawn) {
+    main.append(h('div', { class: 'callout' }, '⏳ O sorteio ainda não foi feito. Quando acontecer, você recebe um e-mail com quem tirou. Enquanto isso, deixe suas sugestões!'));
+  }
+  const wishes = wishDraft || data.me.wishes.map((w) => ({ ...w }));
+  wishDraft = wishes;
+  const form = h('section', { class: 'card' },
+    h('h2', {}, 'O que você gostaria de ganhar?'),
+    h('p', { class: 'sub' }, 'Até 3 sugestões. Quem te tirou vê esta lista — mas não sabe que você sabe 😄'));
+  wishes.forEach((w, i) => {
+    form.append(h('div', { class: 'wish-edit' },
+      h('h3', {}, 'Opção ' + (i + 1)),
+      h('div', { class: 'field' },
+        h('label', { for: 'wt' + i }, 'O que é'),
+        h('input', { id: 'wt' + i, value: w.text, maxlength: 140, placeholder: ['Ex.: Livro "Comida de verdade"', 'Ex.: Garrafa térmica preta', 'Ex.: Vale-presente de livraria'][i], oninput: (e) => (w.text = e.target.value) })),
+      h('div', { class: 'field' },
+        h('label', { for: 'wl' + i }, 'Link (opcional)'),
+        h('input', { id: 'wl' + i, type: 'url', inputmode: 'url', value: w.link, placeholder: 'Cole aqui o link da loja', oninput: (e) => (w.link = e.target.value) }))));
+  });
+  form.append(h('button', { class: 'primary block', onclick: (e) => busy(e.target, async () => {
+    const res = await call('saveWishes', { wishes });
+    data.me.wishes = res.wishes; wishDraft = null;
+    render(); toast('Lista salva! 🎁');
+  }, 'Salvando…') }, 'Salvar minha lista'));
+  main.append(form);
+}
+
+function chat(list, themLabel) {
+  const box = h('div', { class: 'chat' });
+  if (!list.length) box.append(h('p', { class: 'empty' }, 'Nenhuma mensagem ainda.'));
+  for (const m of list) {
+    box.append(h('div', { class: 'msg ' + (m.mine ? 'mine' : 'them') },
+      m.text, h('small', {}, (m.mine ? 'Você' : themLabel) + ' · ' + fmtTime(m.at))));
+  }
+  requestAnimationFrame(() => (box.scrollTop = box.scrollHeight));
+  return box;
+}
+
+function composer(placeholder, action, btnLabel) {
+  const ta = h('textarea', { rows: 1, maxlength: 500, placeholder, 'aria-label': placeholder });
+  const btn = h('button', { class: 'primary', onclick: () => {
+    if (!ta.value.trim()) return ta.focus();
+    busy(btn, async () => {
+      await call(action, { text: ta.value });
+      ta.value = '';
+      await refresh();
+      toast('Mensagem enviada ✉️');
+    }, '…');
+  } }, btnLabel);
+  return h('div', { class: 'composer' }, ta, btn);
+}
+
+function renderMessages() {
+  const gf = data.giftee;
+  setSeen('giftee', data.toGiftee.filter((m) => !m.mine).length);
+  setSeen('santa', data.fromSanta.filter((m) => !m.mine).length);
+
+  main.append(h('section', { class: 'card' },
+    h('h2', {}, 'Com ' + gf.name),
+    h('p', { class: 'sub' }, '🤫 Você está anônimo: ' + gf.name + ' vê só "Seu amigo secreto".'),
+    chat(data.toGiftee, gf.name),
+    composer('Pergunte algo para ' + gf.name + '…', 'sendToGiftee', 'Enviar'),
+    h('p', { class: 'hint' }, gf.name + ' recebe um aviso por e-mail.')));
+
+  main.append(h('section', { class: 'card' },
+    h('h2', {}, 'Com seu amigo secreto'),
+    h('p', { class: 'sub' }, 'Quem te tirou pode te mandar perguntas por aqui. Você não sabe quem é 👀'),
+    chat(data.fromSanta, 'Seu amigo secreto'),
+    composer(data.fromSanta.length ? 'Responder…' : 'Mandar um recado para quem te tirou…', 'replyToSanta', data.fromSanta.length ? 'Responder' : 'Enviar'),
+    h('p', { class: 'hint' }, 'Quem te tirou recebe um aviso por e-mail.')));
+}
+
+async function refresh() {
+  data = await call('load');
+  render();
+}
+
+// Atualiza as mensagens sozinho a cada 20 s quando a aba está aberta.
+setInterval(() => {
+  if (document.visibilityState !== 'visible' || !data || !data.group.drawn) return;
+  if (document.activeElement && document.activeElement.tagName === 'TEXTAREA' && document.activeElement.value) return;
+  if (tab === 'lista') return; // não atrapalha quem está digitando a lista
+  call('load').then((d) => {
+    const changed = JSON.stringify([d.toGiftee, d.fromSanta, d.giftee]) !== JSON.stringify([data.toGiftee, data.fromSanta, data.giftee]);
+    if (changed) { data = d; render(); }
+  }).catch(() => {});
+}, 20000);
+
+(async () => {
+  if (!G || !T) { main.replaceChildren(h('div', { class: 'card' }, 'Link incompleto. Abra pelo link do seu e-mail.')); document.getElementById('hello').textContent = 'Ops'; return; }
+  try { await refresh(); }
+  catch (e) { main.replaceChildren(h('div', { class: 'card' }, e.message)); document.getElementById('hello').textContent = 'Ops'; }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Painel do Organizador</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔑</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <p class="eyebrow">Painel do organizador</p>
+    <h1 id="title">Carregando…</h1>
+    <div class="chips" id="chips"></div>
+  </div>
+</header>
+
+<main id="main"><div class="card loading">Carregando…</div></main>
+<footer>Este painel nunca mostra quem tirou quem.</footer>
+
+<script src="app.js"></script>
+<script>
+const G = qs.get('g'), KEY = qs.get('k');
+const main = document.getElementById('main');
+let data, editing = false;
+
+const call = (action, extra = {}) => api('/api/group', { action, id: G, key: KEY, ...extra });
+
+function emailTag(p) {
+  if (!p.lastEmail) return h('span', { class: 'tag' }, 'e-mail não enviado');
+  if (!p.lastEmail.ok) return h('span', { class: 'tag bad' }, 'falhou ✕');
+  return h('span', { class: 'tag ok' }, (p.lastEmail.type === 'sorteio' ? 'sorteio' : 'convite') + ' enviado ✓');
+}
+
+function render() {
+  document.getElementById('title').textContent = data.name;
+  document.title = data.name + ' · Organizador';
+  headerChips(data);
+  main.replaceChildren();
+
+  if (qs.get('novo')) {
+    main.append(h('div', { class: 'callout' },
+      h('b', {}, '🔖 Salve este link nos favoritos. '),
+      'É por ele que você volta a este painel. Se informou seu e-mail, ele também foi enviado pra você.'));
+  }
+
+  // Status
+  const withWishes = data.participants.filter((p) => p.hasWishes).length;
+  if (data.drawn) {
+    main.append(h('div', { class: 'callout green' },
+      h('b', {}, '✅ Sorteio feito '), 'em ' + new Date(data.drawnAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) +
+      '. Cada pessoa recebeu no e-mail quem tirou. ' + withWishes + ' de ' + data.participants.length + ' já montaram a lista de desejos.'));
+  }
+
+  // Participantes
+  const card = h('section', { class: 'card' });
+  card.append(h('h2', {}, `Participantes (${data.participants.length})`));
+  card.append(h('p', { class: 'sub' }, data.drawn
+    ? 'Se alguém não recebeu, confira o e-mail e reenvie.'
+    : 'Confira os nomes e e-mails antes de sortear.'));
+
+  if (editing) {
+    const box = h('div', { class: 'people' });
+    const addRow = (p = {}) => {
+      const row = h('div', { class: 'person-row' },
+        h('input', { placeholder: 'Nome', value: p.name || '', maxlength: 60 }),
+        h('input', { type: 'email', placeholder: 'e-mail', value: p.email || '', maxlength: 120 }),
+        h('button', { type: 'button', class: 'x', 'aria-label': 'Remover', onclick: () => row.remove() }, '×'));
+      row.dataset.id = p.id || '';
+      box.append(row);
+    };
+    data.participants.forEach(addRow);
+    card.append(box,
+      h('button', { class: 'ghost', type: 'button', onclick: () => { addRow(); box.lastChild.querySelector('input').focus(); } }, '+ Adicionar pessoa'),
+      h('div', { class: 'actions' },
+        h('button', { class: 'primary', onclick: (e) => busy(e.target, async () => {
+          const participants = [...box.children].map((r) => {
+            const [n, m] = r.querySelectorAll('input');
+            return { id: r.dataset.id || undefined, name: n.value, email: m.value };
+          });
+          data = await call('update', { name: data.name, date: data.date, budget: data.budget, notes: data.notes, participants });
+          editing = false; render(); toast('Participantes salvos');
+        }, 'Salvando…') }, 'Salvar'),
+        h('button', { class: 'secondary', onclick: () => { editing = false; render(); } }, 'Cancelar')));
+  } else {
+    const ul = h('ul', { class: 'plist' });
+    for (const p of data.participants) {
+      const li = h('li', {},
+        h('div', { class: 'avatar' }, initial(p.name)),
+        h('div', { class: 'pinfo' }, h('b', {}, p.name), h('small', {}, p.email)),
+        h('div', { style: 'display:flex;flex-direction:column;align-items:flex-end;gap:4px' },
+          p.hasWishes ? h('span', { class: 'tag ok' }, 'lista ✓') : h('span', { class: 'tag' }, 'sem lista'),
+          emailTag(p)));
+      if (data.drawn || p.lastEmail) {
+        li.append(h('button', { class: 'ghost', title: 'Corrigir e-mail e reenviar', onclick: (e) => resend(e.target, p) }, '↻'));
+      }
+      ul.append(li);
+    }
+    card.append(ul);
+    if (!data.drawn) card.append(h('div', { class: 'actions' },
+      h('button', { class: 'secondary', onclick: () => { editing = true; render(); } }, '✎ Editar participantes')));
+  }
+  main.append(card);
+
+  // Ações
+  if (!editing) {
+    if (!data.drawn) {
+      main.append(h('section', { class: 'card' },
+        h('h2', {}, 'Sorteio'),
+        h('p', { class: 'sub' }, 'Ao sortear, cada pessoa recebe no e-mail o nome de quem tirou e o link da página dela (lista de desejos e mensagens anônimas).'),
+        h('button', { class: 'primary block', onclick: (e) => {
+          if (!confirm(`Sortear entre ${data.participants.length} pessoas e enviar os e-mails agora?`)) return;
+          busy(e.target, async () => {
+            data = await call('draw');
+            render();
+            toast(data.failed && data.failed.length ? 'Sorteado! Falhou o envio para: ' + data.failed.join(', ') : 'Sorteio feito e e-mails enviados! 🎉', data.failed && data.failed.length);
+          }, 'Sorteando e enviando…');
+        } }, '🎲 Sortear e enviar e-mails'),
+        h('p', { class: 'hint' }, 'Opcional, antes do sorteio:'),
+        h('button', { class: 'secondary block', style: 'margin-top:6px', onclick: (e) => {
+          if (!confirm('Enviar um e-mail para todos montarem a lista de desejos antes do sorteio?')) return;
+          busy(e.target, async () => {
+            data = await call('invite');
+            render();
+            toast(data.failed && data.failed.length ? 'Falhou para: ' + data.failed.join(', ') : 'Convites enviados ✉️', data.failed && data.failed.length);
+          }, 'Enviando…');
+        } }, '✉️ Enviar convite para montarem a lista de desejos')));
+    } else {
+      main.append(h('section', { class: 'card' },
+        h('h2', {}, 'Precisa mudar algo?'),
+        h('p', { class: 'sub' }, 'Desfazer apaga o sorteio e as mensagens. Depois você edita os participantes e sorteia de novo — todos recebem um novo e-mail.'),
+        h('button', { class: 'secondary', onclick: (e) => {
+          if (!confirm('Desfazer o sorteio? As mensagens trocadas serão apagadas. As listas de desejos ficam.')) return;
+          busy(e.target, async () => { data = await call('reset'); render(); toast('Sorteio desfeito'); });
+        } }, 'Desfazer sorteio')));
+    }
+  }
+}
+
+async function resend(btn, p) {
+  const email = prompt(`E-mail de ${p.name} (corrija se estiver errado):`, p.email);
+  if (email == null) return;
+  busy(btn, async () => {
+    if (email.trim().toLowerCase() !== p.email) data = await call('updateEmail', { pid: p.id, email });
+    data = await call('resend', { pid: p.id });
+    render();
+    toast('E-mail reenviado para ' + p.name);
+  }, '…');
+}
+
+(async () => {
+  if (!G || !KEY) { main.replaceChildren(h('div', { class: 'card' }, 'Link incompleto. Use o link de organizador completo.')); return; }
+  try { data = await call('get'); render(); }
+  catch (e) { main.replaceChildren(h('div', { class: 'card' }, e.message)); document.getElementById('title').textContent = 'Ops'; }
+})();
+</script>
+</body>
+</html>
