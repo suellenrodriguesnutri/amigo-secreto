@@ -45,6 +45,7 @@ async function summary(g) {
 // Envia e-mails para as pessoas indicadas e registra o resultado de cada um.
 async function sendTo(g, people, base) {
   const failed = [];
+  let reason = '';
   await Promise.all(people.map(async (p) => {
     const url = personUrl(base, g, p);
     const msg = g.drawn
@@ -55,11 +56,13 @@ async function sendTo(g, people, base) {
       p.lastEmail = { type: g.drawn ? 'sorteio' : 'convite', at: Date.now(), ok: true };
     } catch (e) {
       console.error('Falha ao enviar para', p.email, e.message);
+      reason = reason || e.message;
       p.lastEmail = { type: g.drawn ? 'sorteio' : 'convite', at: Date.now(), ok: false };
       failed.push(p.name);
     }
   }));
   await db.set(K.group(g.id), g);
+  failed.reason = reason;
   return failed;
 }
 
@@ -120,7 +123,7 @@ module.exports = u.handler(async (b, req) => {
     case 'invite': {
       if (g.drawn) u.fail(409, 'O sorteio já foi feito — use "reenviar" em cada pessoa.');
       const failed = await sendTo(g, g.participants, base);
-      return { ...(await summary(g)), failed };
+      return { ...(await summary(g)), failed, failReason: failed.reason };
     }
 
     case 'draw': {
@@ -133,7 +136,7 @@ module.exports = u.handler(async (b, req) => {
       g.drawnAt = Date.now();
       await db.set(K.group(g.id), g);
       const failed = await sendTo(g, g.participants, base);
-      return { ...(await summary(g)), failed };
+      return { ...(await summary(g)), failed, failReason: failed.reason };
     }
 
     case 'reset': {
@@ -147,7 +150,7 @@ module.exports = u.handler(async (b, req) => {
     case 'resend': {
       const p = findP();
       const failed = await sendTo(g, [p], base);
-      if (failed.length) u.fail(502, `Não consegui enviar o e-mail para ${p.name}. Confira o endereço.`);
+      if (failed.length) u.fail(502, `Não consegui enviar para ${p.name}. ${failed.reason}`);
       return summary(g);
     }
 

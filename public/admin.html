@@ -40,6 +40,12 @@ function render() {
   headerChips(data);
   main.replaceChildren();
 
+  if (failNote) {
+    main.append(h('div', { class: 'callout', style: 'border-color: var(--red)' },
+      h('b', {}, '⚠️ ' + failNote.msg + ' '), failNote.reason || '',
+      h('div', { class: 'actions' }, h('button', { class: 'ghost', onclick: () => { failNote = null; render(); } }, 'Fechar aviso'))));
+  }
+
   if (qs.get('novo')) {
     main.append(h('div', { class: 'callout' },
       h('b', {}, '🔖 Salve este link nos favoritos. '),
@@ -115,7 +121,8 @@ function render() {
           busy(e.target, async () => {
             data = await call('draw');
             render();
-            toast(data.failed && data.failed.length ? 'Sorteado! Falhou o envio para: ' + data.failed.join(', ') : 'Sorteio feito e e-mails enviados! 🎉', data.failed && data.failed.length);
+            if (data.failed && data.failed.length) showFail('Sorteio feito, mas o envio falhou para: ' + data.failed.join(', ') + '.', data.failReason);
+            else toast('Sorteio feito e e-mails enviados! 🎉');
           }, 'Sorteando e enviando…');
         } }, '🎲 Sortear e enviar e-mails'),
         h('p', { class: 'hint' }, 'Opcional, antes do sorteio:'),
@@ -124,7 +131,8 @@ function render() {
           busy(e.target, async () => {
             data = await call('invite');
             render();
-            toast(data.failed && data.failed.length ? 'Falhou para: ' + data.failed.join(', ') : 'Convites enviados ✉️', data.failed && data.failed.length);
+            if (data.failed && data.failed.length) showFail('O envio falhou para: ' + data.failed.join(', ') + '.', data.failReason);
+            else toast('Convites enviados ✉️');
           }, 'Enviando…');
         } }, '✉️ Enviar convite para montarem a lista de desejos')));
     } else {
@@ -137,6 +145,14 @@ function render() {
         } }, 'Desfazer sorteio')));
     }
   }
+}
+
+// Mostra o motivo da falha num aviso fixo no topo do painel (não some sozinho).
+let failNote = null;
+function showFail(msg, reason) {
+  failNote = { msg, reason };
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 async function resend(btn, p) {
