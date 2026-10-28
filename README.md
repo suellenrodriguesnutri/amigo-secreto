@@ -19,7 +19,7 @@ Crie um repositório novo chamado `amigo-secreto` e envie todos os arquivos dest
 
 ### 3. Vercel
 1. **Add New → Project** e importe o repositório `amigo-secreto`. Clique em **Deploy**.
-2. No projeto, vá em **Storage → Create Database → Upstash (Redis)**, plano grátis, e conecte ao projeto. As variáveis do banco são criadas sozinhas.
+2. No projeto, vá em **Storage → Create Database → Redis** (da empresa Redis), plano **Free**, e conecte ao projeto. A variável do banco (`REDIS_URL`) é criada sozinha. (Upstash também funciona.)
 3. Em **Settings → Environment Variables**, adicione:
 
 | Nome | Valor |
