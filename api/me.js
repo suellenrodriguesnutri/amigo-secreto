@@ -4,7 +4,7 @@ const mail = require('../lib/mail');
 const u = require('../lib/util');
 const K = db.keys;
 
-const EMPTY = () => [0, 1, 2].map(() => ({ text: '', link: '' }));
+const EMPTY = () => [0, 1, 2].map(() => ({ text: '', link: '', size: '' }));
 const personUrl = (base, g, p) => `${base}/p.html?g=${g.id}&t=${p.token}`;
 
 async function context(b) {
@@ -51,8 +51,9 @@ module.exports = u.handler(async (b, req) => {
       const wishes = list.map((w, i) => {
         const text = u.str(w && w.text, 140);
         const link = u.link(w && w.link);
-        if (link && !text) u.fail(400, `Escreva o nome do presente ${i + 1} (o link sozinho não diz o que é).`);
-        return { text, link };
+        const size = u.str(w && w.size, 30);
+        if ((link || size) && !text) u.fail(400, `Escreva o nome do presente ${i + 1} (o link ou o tamanho sozinho não diz o que é).`);
+        return { text, link, size };
       });
       await db.set(K.wishes(g.id, me.id), wishes);
       return { wishes };

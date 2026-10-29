@@ -67,6 +67,7 @@ function wishList(wishes) {
   if (!filled.length) return h('p', { class: 'empty' }, 'Ainda não colocou nenhuma sugestão. Que tal perguntar na aba Mensagens? 😉');
   return h('ul', { class: 'wishes' }, filled.map((w) => h('li', {},
     h('div', {}, h('div', {}, w.text),
+      w.size ? h('div', { class: 'wish-size' }, '📏 Tamanho: ' + w.size) : null,
       w.link ? h('a', { href: w.link, target: '_blank', rel: 'noopener noreferrer' }, 'Ver o presente ↗') : null))));
 }
 
@@ -102,9 +103,14 @@ function renderMyList() {
       h('div', { class: 'field' },
         h('label', { for: 'wt' + i }, 'O que é'),
         h('input', { id: 'wt' + i, value: w.text, maxlength: 140, placeholder: ['Ex.: Livro "Comida de verdade"', 'Ex.: Garrafa térmica preta', 'Ex.: Vale-presente de livraria'][i], oninput: (e) => (w.text = e.target.value) })),
-      h('div', { class: 'field' },
-        h('label', { for: 'wl' + i }, 'Link (opcional)'),
-        h('input', { id: 'wl' + i, type: 'url', inputmode: 'url', value: w.link, placeholder: 'Cole aqui o link da loja', oninput: (e) => (w.link = e.target.value) }))));
+      h('div', { class: 'field-row' },
+        h('div', { class: 'field' },
+          h('label', { for: 'wl' + i }, 'Link (opcional)'),
+          h('input', { id: 'wl' + i, type: 'url', inputmode: 'url', value: w.link, placeholder: 'Cole aqui o link da loja', oninput: (e) => (w.link = e.target.value) })),
+        h('div', { class: 'field size' },
+          h('label', { for: 'ws' + i }, 'Tamanho'),
+          h('input', { id: 'ws' + i, value: w.size || '', maxlength: 30, placeholder: 'Ex.: M ou 38', oninput: (e) => (w.size = e.target.value) }),
+          h('small', { class: 'help' }, 'Caso for roupa ou calçado, coloque seu tamanho aqui')))));
   });
   form.append(h('button', { class: 'primary block', onclick: (e) => busy(e.target, async () => {
     const res = await call('saveWishes', { wishes });
